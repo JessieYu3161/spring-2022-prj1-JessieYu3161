@@ -1,0 +1,883 @@
+---
+title: "LOVER OF WISDOM"
+author: "Jessie Yu (UNI:jy3161)"
+output: 
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{css header-colors, echo = FALSE}
+.page-header {
+    background-image: linear-gradient(90deg,#be93c5,#7bc6cc)
+}
+```
+
+```{r setup, include = FALSE, eval = TRUE}
+knitr::opts_chunk$set(eval = TRUE, echo = FALSE, warning = FALSE)
+```
+
+## 0. Install and Load Libraries
+```{r}
+packages.used=c("tm", "wordcloud", "RColorBrewer", 
+                "dplyr", "tidytext", "stringr", "ggplot2", "sentimentr", "ggpubr")
+# check packages that need to be installed.
+packages.needed=setdiff(packages.used, 
+                        intersect(installed.packages()[,1], 
+                                  packages.used))
+# install additional packages
+if(length(packages.needed)>0){
+  install.packages(packages.needed, dependencies = TRUE,
+                   repos='http://cran.us.r-project.org')
+}
+```
+
+```{r, echo = TRUE, message = FALSE}
+library(tm)
+library(wordcloud)
+library(RColorBrewer)
+library(dplyr)
+library(tidytext)
+library(stringr)
+library(ggplot2)
+library(sentimentr)
+library(ggpubr)
+```
+
+This notebook was prepared with the following environmental settings.
+```{r}
+print(R.version)
+```
+
+
+## 1.About the data
+
+The dataset for this project can be found at [Philosophy dataset](https://www.kaggle.com/kouroshalizadeh/history-of-philosophy). 
+"The dataset contains over 300,000 sentences from over 50 texts spanning 10 major schools of philosophy. The represented schools are: Plato, Aristotle, Rationalism, Empiricism, German Idealism, Communism, Capitalism, Phenomenology, Continental Philosophy, and Analytic Philosophy.The texts were cleaned extensively before being tokenized and organized in the way they're presented here."
+
+
+Hang on to the interesting discoveries for a second! Let's first take a look at the dataset! 
+```{r read dataset, include = FALSE}
+philosophy <- readr::read_csv("/Users/apple/Desktop/5243ADS/spring-2022-prj1-JessieYu3161/data/philosophy_data.csv")
+```
+
+
+```{r, echo = TRUE}
+head(philosophy)
+```
+Checking for NAs: 
+```{r echo = TRUE}
+sum(is.na(philosophy) == "TRUE")
+```
+- Great! There is no NAs in our dataset. (not surprising, since the dataset is pre-processed as mentioned above)
+
+
+
+Now, let's get a sense of the length of sentences said by philosophers in each School. Here, I used the pre-processed and pre-defined value in the original dataset, the tokenized texts, and create a new variable that corresponding to the length of the sentences, number of words. 
+```{r echo = TRUE}
+# add new column: number of tokens 
+philosophy$`n_tokens` <- str_count(philosophy$tokenized_txt, "\\w+")
+```
+
+Using data visualization to discover the length of sentences by School:
+```{r echo = TRUE}
+ggplot(data = philosophy, aes(x = school, y = n_tokens)) +
+  geom_boxplot(color="dodgerblue", fill="blue", alpha=0.1, notch=TRUE, notchwidth = 0.9) +
+  theme(axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+  ggtitle("Length of Sentences") + xlab("School") + ylab("Number of Tokens")
+```
+
+From the data frame below, which grouped by School, Author, and Title, the last column represents the number of works of its corresponding divisions. 
+
+```{r echo = TRUE}
+as.data.frame(philosophy %>%
+    group_by(school,author,title) %>%
+    count(title)) %>%
+    arrange(desc(n))
+```
+## 2. The Word Clouds 'Collection'
+
+Let's dig in more!! 
+
+I explored the data by unnesting the tokenized text and removing the less meaningful words, removing the stopwords in English, and generated word frequency tables.
+
+<p style="text-align: center;">**Which words were most frequently used by these philosophers ?**</p>
+
+<p style="text-align: center;">Check out this *Overall Wordcloud* !</p>
+```{r, fig.align = 'center', echo = TRUE}
+overall.words <- philosophy %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+wordcloud(overall.words$words, overall.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+```
+
+
+It is worth noticing after removing the stopwords, the most frequently used words by the philosophers is 'ONE', and also other words "can", "will", "must"...
+
+Now, let us get a closer look and focus on each School!
+
+Word clouds by School(ordered by the amount of sentences from high to low):
+
+Notice: here I only present one chunk of code to demonstrate the coding for first three school's word cloud, more details can be found on my [Github Page](https://github.com/TZstatsADS/spring-2022-prj1-JessieYu3161). 
+
+
+```{r fig.align = 'center', echo = TRUE}
+par(mfrow= c(1,3), mar = c(1,1,1,1))
+
+analytic.words <- philosophy %>%
+  filter(school == "analytic") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+analytic.wc <- wordcloud(analytic.words$words, analytic.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+
+aristotle.words <- philosophy %>%
+  filter(school == "aristotle") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+aristotle.wc <- wordcloud(aristotle.words$words, aristotle.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+
+plato.words <- philosophy %>%
+  filter(school == "plato") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(plato.words$words, plato.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+```
+
+<center>Analytic, Aristotle , and Plato Word Clouds</center>
+
+
+
+```{r fig.align = 'center'}
+par(mfrow= c(1,3), mar = c(1,1,1,1))
+
+german_idealism.words <- philosophy %>%
+  filter(school == "german_idealism") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(german_idealism.words$words, german_idealism.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+
+
+continental.words <- philosophy %>%
+  filter(school == "continental") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(continental.words$words, continental.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+
+phenomenology.words <- philosophy %>%
+  filter(school == "phenomenology") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(phenomenology.words$words, phenomenology.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+```
+
+<center>German Idealism, Continental, and Phenomenology Word Cloud</center>
+
+
+
+```{r fig.align = 'center'}
+par(mfrow= c(1,3), mar = c(1,1,1,1))
+rationalism.words <- philosophy %>%
+  filter(school == "rationalism") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(rationalism.words$words, rationalism.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+
+empiricism.words <- philosophy %>%
+  filter(school == "empiricism") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(empiricism.words$words, empiricism.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+
+feminism.words <- philosophy %>%
+  filter(school == "feminism") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(feminism.words$words, feminism.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+```
+
+
+<center>Rationalism, Empiricism, and Feminism Word Cloud</center>
+
+
+```{r fig.align = 'center'}
+par(mfrow= c(1,3), mar = c(1,1,1,1))
+
+
+capitalism.words <- philosophy %>%
+  filter(school == "capitalism") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(capitalism.words$words, capitalism.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+
+communism.words <- philosophy %>%
+  filter(school == "communism") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(communism.words$words, communism.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+
+nietzsche.words <- philosophy %>%
+  filter(school == "nietzsche") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(nietzsche.words$words, nietzsche.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+```
+
+<center>Capitalism, Communism, and Nietzsche Word Cloud</center>
+
+```{r fig.align = 'center'}
+stoicism.words <- philosophy %>%
+  filter(school == "stoicism") %>% 
+  select(tokenized_txt) %>% 
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  count(words, sort = TRUE) 
+
+
+wordcloud(stoicism.words$words, stoicism.words$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+```
+
+<center>Stoicism Word Cloud</center>
+
+It is interesting to see Rationalism most frequently used word is "GOD", "the rationalists discovered God through the natural world, but in a different way. Rationalists thought it unlikely that God would choose to reveal himself only at particular times to particular people." If you take a look at the Feminism, Capitalism, and Communism Word Cloud, these are rather intuitional and congenital. 
+
+
+## 3. Sentiment Analysis 
+
+For sentiment analysis in this section, I'm using NRC Word-Emotion Association Lexicon, *more details can be found here* [NRC_Lexicon](http://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm). 
+
+Let's first look at Plato, Aristotle, and Nietzsche, who are the only author corresponding to each school in our dataset!
+```{r}
+philosophy %>%
+  filter(school == "plato" | school == "aristotle" | school == "nietzsche") %>%
+  select(author) %>%
+  distinct(author)
+```
+
+
+Here, I calculated the frequency of each sentimental words used by each author and assign colors by sentiment type. Notice that I filtered out "positive" and "negative" categories in the sentiment types, we focus on emotions here (anger, anticipation, disgust, fear, joy, sadness, surprise, and trust). 
+
+```{r, echo = TRUE, include = TRUE, message = FALSE}
+plato.sentiment <- plato.words %>%
+  rename(word = words) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment) %>%
+  summarise(sentiment_freq =sum(n))
+
+plato.s.p <- plato.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(sentiment, sentiment_freq, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+  xlab("Sentiment") + ylab("Frequency")
+```
+
+
+```{r, echo = TRUE, include = TRUE, message = FALSE, message = FALSE}
+aristotle.sentiment <- aristotle.words %>%
+  rename(word = words) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment) %>%
+  summarise(sentiment_freq =sum(n))
+
+aristotle.s.p <- aristotle.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(sentiment, sentiment_freq, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+ xlab("Sentiment") + ylab("Frequency")
+```
+
+```{r, echo = TRUE, include = TRUE, message = FALSE}
+nietzsche.sentiment <- nietzsche.words %>%
+  rename(word = words) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment) %>%
+  summarise(sentiment_freq =sum(n))
+
+nietzsche.s.p <- nietzsche.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(sentiment, sentiment_freq, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+  xlab("Sentiment") + ylab("Frequency")
+```
+
+```{r, out.width="90%", echo = TRUE, include = TRUE}
+s.p <- ggarrange(plato.s.p, aristotle.s.p, nietzsche.s.p, ncol = 3, nrow = 1, common.legend = TRUE)
+annotate_figure(s.p, top = text_grob("Plato  vs.  Aristotle  vs.  Nietzsche Sentiment Analysis by Author"))
+```
+
+
+As for the rest of the school, each school has multiple number of authors. Let's compare them! For a more intuitive and informative perception, I calculated the percentage of each sentimental words used by each author. Colors are assigned based on sentiment types. 
+
+Notice: The coding for each school is repetitive and here I would only show Analytic school for demonstration, for more details [Github Page](https://github.com/TZstatsADS/spring-2022-prj1-JessieYu3161). 
+
+```{r, echo = TRUE, include = TRUE, message = FALSE}
+analytic.sentiment <- philosophy %>%
+  filter(school == "analytic") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+analytic.s.p <- analytic.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("Analytic Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+```
+
+
+
+```{r, message = FALSE}
+feminism.sentiment <- philosophy %>%
+  filter(school == "feminism") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+feminism.s.p <- feminism.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("Feminism Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+
+```
+
+```{r, out.width="90%", echo = TRUE, include = TRUE}
+ggarrange(analytic.s.p, feminism.s.p, ncol = 2, nrow = 1, common.legend = TRUE)
+```
+
+
+```{r, message = FALSE}
+capitalism.sentiment <- philosophy %>%
+  filter(school == "capitalism") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+capitalism.s.p <- capitalism.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("Capitalism Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+```
+
+```{r, message = FALSE}
+stoicism.sentiment <- philosophy %>%
+  filter(school == "stoicism") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+stoicism.s.p <- stoicism.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("Stoicism Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+```
+
+```{r, message = FALSE}
+empiricism.sentiment <- philosophy %>%
+  filter(school == "empiricism") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+empiricism.s.p <- empiricism.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("Empiricism Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+```
+
+
+```{r, message = FALSE}
+rationalism.sentiment <- philosophy %>%
+  filter(school == "rationalism") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+rationalism.s.p <- rationalism.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("Rationalism Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+```
+
+```{r, message = FALSE}
+continental.sentiment <- philosophy %>%
+  filter(school == "continental") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+continental.s.p <-continental.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("Continental Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+```
+
+```{r, message = FALSE}
+phenomenology.sentiment <- philosophy %>%
+  filter(school == "phenomenology") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+phenomenology.s.p <- phenomenology.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("Phenomenology Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+```
+
+```{r, message = FALSE}
+german_idealism.sentiment <- philosophy %>%
+  filter(school == "german_idealism") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+german_idealism.s.p <- german_idealism.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("German_Idealism Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+```
+
+```{r, message = FALSE}
+communism.sentiment <- philosophy %>%
+  filter(school == "communism") %>% 
+  select(author,tokenized_txt) %>%
+  unnest_tokens(words, tokenized_txt, token = "words") %>%
+  filter(!(words %in% stopwords("English"))) %>%
+  rename(word = words) %>%
+  group_by(author) %>%
+  mutate(n_words = n()) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F) %>%
+  group_by(sentiment, author, n_words) %>%
+  summarise(sentiment_freq = n()) %>%
+  mutate(percentage = round(sentiment_freq/n_words*100, 1))
+
+communism.s.p <- communism.sentiment %>% filter(sentiment != "positive", sentiment != "negative") %>%
+  ggplot(aes(author, percentage, fill = sentiment)) +    
+  geom_bar(stat="identity",   
+           position=position_dodge()) + 
+  scale_fill_brewer(palette="Pastel1") +
+  theme_bw() +
+  theme(legend.position = "top",
+        axis.text.x = element_text(color = "rosybrown", 
+                           size = 9, angle = 45),
+          axis.text.y = element_text(color = "rosybrown", 
+                           size = 9, angle = 45), 
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "aliceblue")) +
+   ggtitle("Communism Sentiment Analysis") + xlab("Authors") + ylab("Percentage")
+```
+
+
+```{r out.width="90%"}
+ggarrange(capitalism.s.p, stoicism.s.p, ncol = 2, nrow = 1, common.legend = TRUE)
+```
+
+```{r out.width="90%"}
+ggarrange(empiricism.s.p, rationalism.s.p, ncol = 2, nrow = 1, common.legend = TRUE)
+```
+
+```{r out.width="90%"}
+ggarrange(continental.s.p, phenomenology.s.p, ncol = 2, nrow = 1, common.legend = TRUE)
+```
+
+```{r out.width="90%"}
+ggarrange(german_idealism.s.p, communism.s.p, ncol = 2, nrow = 1, common.legend = TRUE)
+```
+
+As the above visualizations present, "trust" words are indeed popular!!! "Trust" words are defined as "Positive" sentiment and they are a big deal to philosophers. 
+
+<center>Curious about what "trust" words are used? </center>
+```{r, include = TRUE, echo = TRUE}
+trust <- overall.words %>%
+  rename(word = words) %>%
+  left_join(get_sentiments("nrc"), by = "word") %>%
+  mutate(sentiment = factor(sentiment)) %>%
+  filter(is.na(sentiment) == F, sentiment == "trust")
+
+wordcloud(trust$word, trust$n,
+          scale=c(3,0.35),
+          max.words=100,
+          min.freq=1,
+          random.order=FALSE,
+          rot.per=0.25,
+          use.r.layout=T,
+          random.color=FALSE,
+          colors=brewer.pal(8,"Pastel1"))
+```
+
+
+
+
